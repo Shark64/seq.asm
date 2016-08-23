@@ -81,31 +81,34 @@ calc_seq:
 
 ; Takes int in rax, returns pointer to string in r9 and size in r11
 itoa:
-    mov rbx, 10
     mov r9, BYTE_BUFFER+10 ; Start from the end and add each number in the previous location
     mov [r9], byte 0 ; Store null char '\0' in last slot
     dec r9 ; Decrement memory index
     mov [r9], byte 0xA ; Store newline char '\n' in second to last slot
     dec r9
-    mov r11, 1 ; Store the size in r11 (starts at 1 because of the newline)
+    xor r11d, r11d
+    mov r11b, 1 ; Store the size in r11 (starts at 1 because of the newline)
 
     ; Determine if the number is negative, and if so, set r10b to 1
-    xor r10b, r10b
+    mov rbx, rax
+    neg rbx
+    xor r10d, r10d
     test rax, rax
-    jns .loop_block ; If it's not negative, jump to loop
-    mov r10b, 1 ; If it is, set r10b to 1
-    neg rax ; Make the number positive again for the ASCII conversion
+    sets r10b, ; If it is, set r10b to 1
+    cmovs rax, rbx
+    xor ebx, ebx
+    mov bl, 10 
 
 .loop_block:
-    mov rdx, 0
+    xor edx, edx
     ; Divide number by 10 and use remainder to calculate ASCII char value
-    div rbx
+    div ebx
 
     ; If quotient is 0, leave
-    cmp rax, 0
-    je .return_block
+    test eax, eax
+    jz .return_block
 
-    add dl, 0x30 ; 0x30 is '0' in ASCII
+    add edx, 0x30 ; 0x30 is '0' in ASCII
     mov [r9], dl ; Put the ASCII equivalent of this byte in r9
     dec r9 ; Decrement r9
     inc r11 ; Increment size
@@ -113,7 +116,7 @@ itoa:
 
 .return_block:
     ; Repeat the loop once more
-    add dl, 0x30
+    add edx, 0x30
     mov [r9], dl
     inc r11
 
@@ -130,27 +133,26 @@ itoa:
 
 ; Takes int string pointer in rsi, returns integer in rax
 atoi:
-    xor rax, rax ; Set rax to 0
-    xor rcx, rcx ; Set rcx to 0, we'll store the current digit here
-    xor r10b, r10b ; Set r10b to 0, we'll store the number's sign here
-    mov rbx, 10 ; Set rbx to 10
+    xor eax, eax ; Set rax to 0
+    xor ecx, ecx ; Set rcx to 0, we'll store the current digit here
+    xor r10d, r10d ; Set r10b to 0, we'll store the number's sign here
+    lea ebx, [rax+10] ; Set rbx to 10
 
     ; Check if the first char is a '-' indicating a negative number
-    mov cl, [rsi]
+    movzx ecx, byte [rsi]
     cmp cl, byte 0x2D
     ; If it's not continue to the loop
-    jne .loop_block
     ; Otherwise, set r10b to 1 for negative
-    mov r10b, 1
-    inc rsi
+    setne r10b
+    add rsi, r10 ; increment if negative to skip '-'
 
 .loop_block:
     ; Store our current char in cl
-    mov cl, [rsi]
+    movzx ecx, byte [rsi]
 
     ; If cl points to terminator, leave loop
-    cmp cl, byte 0
-    je .return_block
+    test cl, cl
+    jz .return_block
 
     ; Check if numbers are within bounds
     cmp cl, byte 0x30
@@ -159,7 +161,7 @@ atoi:
     jg err_invalid_args
 
     ; Multiply value in 'rcx' by 'rbx' (10)
-    mul rbx
+    mul ebx
 
     ; Convert to number from ASCII
     sub cl, byte 0x30 ; 0x30 is ASCII for 0
@@ -174,32 +176,31 @@ atoi:
 
 .return_block:
     ; If r10b is 1, make the number negative
-    cmp r10b, 1
-    je .handle_negative
-    ; Otherwise, return
-    ret
-
-.handle_negative:
+    mov rcx, rax
     neg rax
+    cmp r10b, 1
+    cmovne rax, rcx
     ret
 
 ; Prints the string at r9 with size of r11
 print:
-    mov rax, 1 ; Syscall number 1 (write)
-    mov rdi, 1 ; 1 = STDOUT
+    xor eax, eax
+    mov al, 1 ; Syscall number 1 (write)
+    mov edi, eax ; 1 = STDOUT
     mov rsi, r9 ; Pointer to string at r9
     mov rdx, r11 ; Number of chars in string at r11
     syscall
     ret
 
 exit:
-    mov rax, 60 ; Syscall number 60 (exit)
-    mov rdi, 0 ; Exit code
+    xor edi, edi ; Exit code
+    lea eax, [rdi+60] ; Syscall number 60 (exit)
     syscall
 
 exit_err:
-    mov rax, 60 ; Syscall number 60 (exit)
-    mov rdi, 1 ; Exit code
+    xor edi, edi
+    lea eax, [rdi+60] ; Syscall number 60 (exit)
+    mov dil, 1 ; Exit code
     syscall
 
 err_invalid_args:

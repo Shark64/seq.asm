@@ -29,7 +29,7 @@ _start:
 
     add rsp, 8; skip over argv[0] in stack
 
-    cmp rdx, 3; we want 1-2 args (plus the arg 0, the program name)
+    cmp edx, 3; we want 1-2 args (plus the arg 0, the program name)
     jne .two_args ; If we don't have 2 args, check if we have 1 instead
     ; If we have 2 args, continue
 
@@ -50,10 +50,10 @@ _start:
     jmp exit
 
 .two_args:
-    cmp rdx, 2
+    cmp edx, 2
     jne err_invalid_args ; If we don't have 1 arg either, exit
     ; Otherwise, assume that the range starts at 1 and ends at the first arg
-    mov r15, 1
+    mov r15d, 1
     jmp .last_arg
 
 
@@ -65,7 +65,6 @@ calc_seq:
     ; If r13 > r14, leave the loop
     cmp r13, r14
     jg .return_block
-
     ; Print out counter's value
     mov rax, r13
     call itoa
@@ -81,44 +80,35 @@ calc_seq:
 
 ; Takes int in rax, returns pointer to string in r9 and size in r11
 itoa:
+    mov ebx, 10
     mov r9, BYTE_BUFFER+10 ; Start from the end and add each number in the previous location
-    mov [r9], byte 0 ; Store null char '\0' in last slot
-    dec r9 ; Decrement memory index
-    mov [r9], byte 0xA ; Store newline char '\n' in second to last slot
-    dec r9
-    xor r11d, r11d
-    mov r11b, 1 ; Store the size in r11 (starts at 1 because of the newline)
+    mov [r9-1], word bx; 0xA ; Store newline char '\n' in second to last slot
+    sub r9, 2
+    xor r10d, r10d
+    lea r11d, [r10+1] ; Store the size in r11 (starts at 1 because of the newline)
 
     ; Determine if the number is negative, and if so, set r10b to 1
-    mov rbx, rax
-    neg rbx
-    xor r10d, r10d
-    test rax, rax
-    sets r10b, ; If it is, set r10b to 1
-    cmovs rax, rbx
-    xor ebx, ebx
-    mov bl, 10 
+    mov edx, eax
+    neg edx
+    test eax, eax
+    sets r10b ; If it is, set r10b to 1
+    cmovs eax, edx ; Make the number positive again for the ASCII conversion
 
 .loop_block:
     xor edx, edx
     ; Divide number by 10 and use remainder to calculate ASCII char value
     div ebx
 
-    ; If quotient is 0, leave
-    test eax, eax
-    jz .return_block
 
     add edx, 0x30 ; 0x30 is '0' in ASCII
     mov [r9], dl ; Put the ASCII equivalent of this byte in r9
-    dec r9 ; Decrement r9
-    inc r11 ; Increment size
-    jmp .loop_block ; Repeat loop
+    sub r9, 1 ; Decrement r9
+    add r11, 1 ; Increment size
+    ; If quotient is 0, leave
+    test eax, eax
+    jnz .loop_block ; Repeat loop
 
-.return_block:
-    ; Repeat the loop once more
-    add edx, 0x30
-    mov [r9], dl
-    inc r11
+    add r9, 1 ; fix last decrement
 
     ; Check the number's sign stored in r10b
     cmp r10b, 1
@@ -143,31 +133,35 @@ atoi:
     cmp cl, byte 0x2D
     ; If it's not continue to the loop
     ; Otherwise, set r10b to 1 for negative
-    setne r10b
-    add rsi, r10 ; increment if negative to skip '-'
+    sete r10b
+    add rsi, r10
 
 .loop_block:
     ; Store our current char in cl
-    movzx ecx, byte [rsi]
-
+    movzx ecx, byte[rsi]
     ; If cl points to terminator, leave loop
     test cl, cl
     jz .return_block
 
     ; Check if numbers are within bounds
+    xor ebx, ebx
+    xor edx, edx
     cmp cl, byte 0x30
-    jl err_invalid_args
+    setb bl
     cmp cl, byte 0x39
-    jg err_invalid_args
+    seta dl 
+    add bl,dl
+    jnz err_invalid_args
+    ; Multiply value in 'eax' by 10
+    lea eax, [rax+rax*4]
+    sal eax, 1
 
-    ; Multiply value in 'rcx' by 'rbx' (10)
-    mul ebx
 
     ; Convert to number from ASCII
-    sub cl, byte 0x30 ; 0x30 is ASCII for 0
+    sub ecx, byte 0x30 ; 0x30 is ASCII for 0
 
     ; Add the current digit to rax
-    add al, cl
+    add eax, ecx
 
     ; Increment rsi
     inc rsi
@@ -176,10 +170,10 @@ atoi:
 
 .return_block:
     ; If r10b is 1, make the number negative
-    mov rcx, rax
-    neg rax
+    mov ecx, eax
+    neg eax		
     cmp r10b, 1
-    cmovne rax, rcx
+    cmovne eax, ecx
     ret
 
 ; Prints the string at r9 with size of r11
@@ -193,14 +187,14 @@ print:
     ret
 
 exit:
-    xor edi, edi ; Exit code
+    xor edi, edi
     lea eax, [rdi+60] ; Syscall number 60 (exit)
     syscall
 
 exit_err:
-    xor edi, edi
-    lea eax, [rdi+60] ; Syscall number 60 (exit)
-    mov dil, 1 ; Exit code
+    xor eax, eax
+    lea edi, [rax+1] ; Exit code
+    mov al, 60 ; Syscall number 60 (exit)
     syscall
 
 err_invalid_args:
